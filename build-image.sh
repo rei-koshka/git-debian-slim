@@ -3,19 +3,29 @@
 set -e
 
 function build_image() {
-  local image_name="$1"
-  local image_tag="$2"
-  local git_version="$3"
-  local supress_errors="$4"
+  local base_image_name="$1"
+  local base_image_version="$2"
+  local with_docs="$3"
+  local with_addons="$4"
+  local git_version="$5"
+  local lfs_version="$6"
+  local supress_errors="$7"
 
-  output_tag_name="git:${git_version}-${image_name}-${image_tag}"
+  local base_line_number=$(grep -n "as base" Dockerfile | cut -d ':' -f 1)
+  local base_image="${base_image_name}:${base_image_version}"
 
-  docker build \
+  sed -i "${base_line_number}s/.*/FROM ${base_image} as base/" Dockerfile
+
+  local final_image_suffix="${base_image_name}-${base_image_version}"
+  local output_tag_name="git:${git_version}-${final_image_suffix}"
+
+  docker buildx build \
     -t "${output_tag_name}" \
-    -f Dockerfile \
-    --build-arg "IMAGE_NAME=${image_name}" \
-    --build-arg "IMAGE_TAG=${image_tag}" \
+    --build-arg "base_image=${base_image}" \
     --build-arg "GIT_VERSION=${git_version}" \
+    --build-arg "LFS_VERSION=${lfs_version}" \
+    --build-arg "WITH_DOCS=${with_docs}" \
+    --build-arg "WITH_ADDONS=${with_addons}" \
     --build-arg "SUPPRESS_ERRORS=${supress_errors}" \
     --progress=plain \
     --target=final \
@@ -23,28 +33,36 @@ function build_image() {
 }
 
 function save_image() {
-  local image_name="$1"
-  local image_tag="$2"
+  local base_image_name="$1"
+  local base_image_version="$2"
   local git_version="$3"
 
-  output_name="${git_version}-${image_name}-${image_tag}"
+  local final_image_suffix="${base_image_name}-${base_image_version}"
+
+  output_name="${git_version}-${final_image_suffix}"
 
   docker save -o "./git-${output_name}.tar" "git:${output_name}"
 }
 
-image_name="debian"
-image_tag="stable-slim"
+base_image_name="debian"
+base_image_version="stable-slim"
 git_version="2.39.2"
-suppress_errors="false"
-need_save=0
+lfs_version="3.3.0"
+with_docs=false
+with_addons=false
+suppress_errors=false
+need_save=false
 
 if [ "$1" == "--help" ]; then
   echo
   echo "Builds Git using given Debian-based image."
   echo
   echo "  Parameters:"
-  echo "    --image              Debian-based Docker image (default: \`${image_name}:${image_tag}\`)."
+  echo "    --base-image         Base image (default: \`${base_image_name}:${base_image_version}\`)."
   echo "    --git-version        Git version (default: \`${git_version}\`)."
+  echo "    --lfs-version        Git LFS version (default: \`${lfs_version}\`)."
+  echo "    --with-docs          Include docs (default: \`${with_docs}\`)."
+  echo "    --with-addons        Include add-ons (Perl, Python, etc.) (default: \`${with_addons}\`)."
   echo "    --suppress-errors    Proceed even on severe errors with non-zero exit codes (default: \`${suppress_errors}\`)."
   echo "    --save               Save built image as \`.tar\` archive (default: \`${need_save}\`)."
   echo
@@ -53,14 +71,9 @@ if [ "$1" == "--help" ]; then
 fi
 
 while [ "$#" != "0" ]; do
-  if [ "$1" == "--image" ]; then
-    image_name=$(echo "$2" | cut -d ":" -f 1)
-    image_tag=$(echo "$2" | cut -d ":" -f 2)
-
-    if [ -z "${image_tag}" ]; then
-      image_tag="latest"
-    fi
-
+  if [ "$1" == "--base-image" ]; then
+    base_image_name="$(echo "$2" | cut -d ':' -f 1)"
+    base_image_version="$(echo "$2" | cut -d ':' -f 2)"
     shift
     shift
   fi
@@ -71,21 +84,47 @@ while [ "$#" != "0" ]; do
     shift
   fi
 
+  if [ "$1" == "--lfs-version" ]; then
+    lfs_version="$2"
+    shift
+    shift
+  fi
+
   if [ "$1" == "--suppress-errors" ]; then
     suppress_errors="$1"
     shift
   fi
 
   if [ "$1" == "--save" ]; then
-    need_save=1
+    need_save=true
+    shift
+  fi
+
+  if [ "$1" == "--with-docs" ]; then
+     with_docs=true
+    shift
+  fi
+
+  if [ "$1" == "--with-addons" ]; then
+    with_addons=true
     shift
   fi
 done
 
-build_image "${image_name}" "${image_tag}" "${git_version}" "${suppress_errors}"
+build_image \
+  "${base_image_name}" \
+  "${base_image_version}" \
+  "${with_docs}" \
+  "${with_addons}" \
+  "${git_version}" \
+  "${lfs_version}" \
+  "${suppress_errors}"
 
-if [ "${need_save}" ]; then
-  save_image "${image_name}" "${image_tag}" "${git_version}"
+if $need_save; then
+  save_image \
+    "${base_image_name}" \
+    "${base_image_version}" \
+    "${git_version}"
 fi
 
 exit 0
