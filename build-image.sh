@@ -9,7 +9,8 @@ function build_image() {
   local with_addons="$4"
   local git_version="$5"
   local lfs_version="$6"
-  local supress_errors="$7"
+  local src_type="$7"
+  local supress_errors="$8"
 
   local base_line_number=$(grep -n "as base" Dockerfile | cut -d ':' -f 1)
   local base_image="${base_image_name}:${base_image_version}"
@@ -21,14 +22,16 @@ function build_image() {
 
   docker buildx build \
     -t "${output_tag_name}" \
-    --build-arg "base_image=${base_image}" \
-    --build-arg "GIT_VERSION=${git_version}" \
-    --build-arg "LFS_VERSION=${lfs_version}" \
-    --build-arg "WITH_DOCS=${with_docs}" \
-    --build-arg "WITH_ADDONS=${with_addons}" \
-    --build-arg "SUPPRESS_ERRORS=${supress_errors}" \
-    --progress=plain \
+    --build-arg="BASE_IMAGE=${base_image}" \
+    --build-arg="GIT_VERSION=${git_version}" \
+    --build-arg="LFS_VERSION=${lfs_version}" \
+    --build-arg="WITH_DOCS=${with_docs}" \
+    --build-arg="WITH_ADDONS=${with_addons}" \
+    --build-arg="SRC_TYPE=${src_type}" \
+    --build-arg="SUPPRESS_ERRORS=${supress_errors}" \
     --target=final \
+    --progress=plain \
+    --no-cache \
     .
 }
 
@@ -50,6 +53,7 @@ git_version="2.39.2"
 lfs_version="3.3.0"
 with_docs=false
 with_addons=false
+src_type="remote"
 suppress_errors=false
 need_save=false
 
@@ -63,6 +67,7 @@ if [ "$1" == "--help" ]; then
   echo "    --lfs-version        Git LFS version (default: \`${lfs_version}\`)."
   echo "    --with-docs          Include docs (default: \`${with_docs}\`)."
   echo "    --with-addons        Include add-ons (Perl, Python, etc.) (default: \`${with_addons}\`)."
+  echo "    --src-path           Build from specified source directory, instead of remote tarball."
   echo "    --suppress-errors    Proceed even on severe errors with non-zero exit codes (default: \`${suppress_errors}\`)."
   echo "    --save               Save built image as \`.tar\` archive (default: \`${need_save}\`)."
   echo
@@ -91,7 +96,7 @@ while [ "$#" != "0" ]; do
   fi
 
   if [ "$1" == "--suppress-errors" ]; then
-    suppress_errors="$1"
+    suppress_errors=true
     shift
   fi
 
@@ -109,6 +114,14 @@ while [ "$#" != "0" ]; do
     with_addons=true
     shift
   fi
+
+  if [ "$1" == "--src-path" ]; then
+    src_type="local"
+    mkdir src || true
+    sudo mount --bind "$2" "src" || true
+    shift
+    shift
+  fi
 done
 
 build_image \
@@ -118,6 +131,7 @@ build_image \
   "${with_addons}" \
   "${git_version}" \
   "${lfs_version}" \
+  "${src_type}" \
   "${suppress_errors}"
 
 if $need_save; then
@@ -125,6 +139,11 @@ if $need_save; then
     "${base_image_name}" \
     "${base_image_version}" \
     "${git_version}"
+fi
+
+if [ "${src_type}" == "local" ]; then
+  sudo umount -R "src" || true
+  rm -rf "src" || true
 fi
 
 exit 0

@@ -1,24 +1,43 @@
+ARG SRC_TYPE=remote
 ARG WITH_DOCS=true
 ARG WITH_ADDONS=true
 
 FROM debian:stable-slim as base
 
-RUN apt-get update && \
-    apt-get install -y \
-    libcurl4-gnutls-dev
-
-FROM base as build_git
-
-WORKDIR /
-
 ARG GIT_VERSION=2.39.2
 ARG SUPPRESS_ERRORS=false
 
 ENV SRC_NAME=git-${GIT_VERSION}
-ENV ARCHIVE_NAME=${SRC_NAME}.tar.gz
+
+RUN apt-get update && \
+    apt-get install -y \
+    libcurl4-gnutls-dev
+
+FROM base as fetch_src_remote
+
+WORKDIR /
+
+ONBUILD ENV ARCHIVE_NAME=${SRC_NAME}.tar.gz
+
+ONBUILD RUN apt-get install -y \
+            curl
+
+ONBUILD RUN curl https://mirrors.edge.kernel.org/pub/software/scm/git/${ARCHIVE_NAME} \
+            -o ${ARCHIVE_NAME} && \
+            tar -xzvf ${ARCHIVE_NAME} && \
+            rm ${ARCHIVE_NAME}
+
+FROM base as fetch_src_local
+
+ONBUILD WORKDIR /
+
+ONBUILD COPY ./src ./${SRC_NAME}
+
+FROM fetch_src_${SRC_TYPE} as build_git
+
+WORKDIR /
 
 RUN apt-get install -y \
-    curl \
     cmake \
     gcc \
     dh-autoreconf \
@@ -33,11 +52,6 @@ RUN if ${WITH_DOCS}; then \
     docbook2x \
     install-info \
     ; fi
-
-RUN curl https://mirrors.edge.kernel.org/pub/software/scm/git/${ARCHIVE_NAME} \
-    -o ${ARCHIVE_NAME} && \
-    tar -xzvf ${ARCHIVE_NAME} && \
-    rm ${ARCHIVE_NAME}
 
 RUN cd ${SRC_NAME} && \
     make configure && \

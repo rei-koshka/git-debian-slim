@@ -1,0 +1,7 @@
+*
+!.gitignore
+!.gitattributes
+!.dockerignore
+!*.sh
+!Dockerfile
+!README.md
