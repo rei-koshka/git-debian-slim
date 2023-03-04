@@ -10,7 +10,7 @@ function build_image() {
   local git_version="$5"
   local lfs_version="$6"
   local src_type="$7"
-  local supress_errors="$8"
+  local suppress_errors="$8"
 
   local base_line_number=$(grep -n "as base" Dockerfile | cut -d ':' -f 1)
   local base_image="${base_image_name}:${base_image_version}"
@@ -28,7 +28,7 @@ function build_image() {
     --build-arg="WITH_DOCS=${with_docs}" \
     --build-arg="WITH_ADDONS=${with_addons}" \
     --build-arg="SRC_TYPE=${src_type}" \
-    --build-arg="SUPPRESS_ERRORS=${supress_errors}" \
+    --build-arg="SUPPRESS_ERRORS=${suppress_errors}" \
     --target=final \
     --progress=plain \
     --no-cache \
